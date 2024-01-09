@@ -50,75 +50,62 @@ def load_df(file_name):
 df_pin = load_df("0eeeb621168f.pin")
 df_geo = load_df("0eeeb621168f.geo")
 df_user = load_df("0eeeb621168f.user")
-display(df_pin)
-display(df_geo)
-display(df_user)
+
 
 
 
 # COMMAND ----------
 
-df_pin = df_pin.replace({'User Info Error': None})
-df_pin = df_pin.replace({' ':None})
-df_pin = df_pin.replace({'Image src error.':None})
-df_pin = df_pin.replace({'Untitled':None})
-df_pin = df_pin.replace({'N,o, ,T,a,g,s, ,A,v,a,i,l,a,b,l,e':None})
-df_pin = df_pin.replace({'No Title Data Available':None})
+def pin_data_cleaner(df_pin):
+    df_pin = df_pin.replace({'User Info Error': None})
+    df_pin = df_pin.replace({'Image src error.':None})
+    df_pin = df_pin.replace({'Untitled':None})
+    df_pin = df_pin.replace({'N,o, ,T,a,g,s, ,A,v,a,i,l,a,b,l,e':None})
+    df_pin = df_pin.replace({'No Title Data Available':None})
+    df_pin = df_pin.withColumn("follower_count", regexp_replace("follower_count", "k", "000"))
+    df_pin = df_pin.withColumn("follower_count", regexp_replace("follower_count", "M", "000000"))
+    df_pin = df_pin.withColumn("follower_count", df_pin["follower_count"].cast("integer"))
+    df_pin = df_pin.withColumn("save_location", regexp_replace("save_location", "Local save in", ""))
+    df_pin = df_pin.withColumnRenamed("index", "ind")
+    df_pin = df_pin.drop("downloaded")
+    df_pin = df_pin.select("ind", "unique_id", "title", "description", "follower_count", "poster_name", "tag_list", "is_image_or_video", "image_src", "save_location", "category")
+    df_pin = df_pin.dropDuplicates(['description'])
+    return df_pin
 
-df_pin = df_pin.withColumn("follower_count", regexp_replace("follower_count", "k", "000"))
-df_pin = df_pin.withColumn("follower_count", regexp_replace("follower_count", "M", "000000"))
-df_pin = df_pin.withColumn("follower_count", df_pin["follower_count"].cast("integer"))
+clean_pin_data = pin_data_cleaner(df_pin)
 
-# df_pin = df_pin.withColumn("downloaded", df_pin["downloaded"].cast("integer"))
-
-df_pin = df_pin.withColumn("save_location", regexp_replace("save_location", "Local save in", ""))
-
-df_pin = df_pin.withColumnRenamed("index", "ind")
-
-df_pin = df_pin.drop("downloaded")
-
-df_pin = df_pin.select("ind", "unique_id", "title", "description", "follower_count", "poster_name", "tag_list", "is_image_or_video",
-                   "image_src", "save_location", "category")
-
-
-# df_pin = df_pin.dropDuplicates(['description'])
-
-df_pin.printSchema()
-display(df_pin)
 
 # COMMAND ----------
 
-# df_geo = df_geo.withColumn("coordinates", array("latitude", "longitude"))
-# df_geo = df_geo.drop("latitude", "longitude")
-# df_geo = df_geo.select("ind", "country", "coordinates", "timestamp")
-
-df_geo = df_geo.withColumn("timestamp", to_timestamp("timestamp"))
-
-df_geo = df_geo.dropDuplicates(['ind'])
-
-display(df_geo)
-df_geo.printSchema()
+def geo_data_cleaner(df_geo):
+    df_geo = df_geo.withColumn("coordinates", array("latitude", "longitude"))
+    df_geo = df_geo.drop("latitude", "longitude")
+    df_geo = df_geo.select("ind", "country", "coordinates", "timestamp")
+    df_geo = df_geo.withColumn("timestamp", to_timestamp("timestamp"))
+    df_geo = df_geo.dropDuplicates(['ind'])
+    return df_geo
+    
+clean_geo_data = geo_data_cleaner(df_geo)
 
 # COMMAND ----------
 
-df_user = df_user.withColumn("user_name", concat("first_name",lit(" "), "last_name"))
-df_user = df_user.dropDuplicates(['ind'])
-df_user = df_user.drop("first_name", "last_name")
+def user_data_cleaner(df_user):
+    df_user = df_user.withColumn("user_name", concat("first_name",lit(" "), "last_name"))
+    df_user = df_user.dropDuplicates(['ind'])
+    df_user = df_user.drop("first_name", "last_name")
+    df_user = df_user.withColumn("date_joined", to_timestamp("date_joined"))
+    df_user = df_user.select("ind", "user_name", "age", "date_joined")
+    return df_user
 
-df_user = df_user.withColumn("date_joined", to_timestamp("date_joined"))
-
-df_user = df_user.select("ind", "user_name", "age", "date_joined")
-
-display(df_user)
-df_user.printSchema()
+clean_user_data = user_data_cleaner(df_user)
 
 # COMMAND ----------
 
 
-df_pin.write.format("parquet").mode("overwrite").saveAsTable("pin_table")
-df_geo.write.format("parquet").mode("overwrite").saveAsTable("geo_table")
+clean_pin_data.write.format("parquet").mode("overwrite").saveAsTable("pin_table")
+clean_geo_data.write.format("parquet").mode("overwrite").saveAsTable("geo_table")
 
-result_df = spark.sql("""
+most_pop_category_per_country = spark.sql("""
     SELECT DISTINCT 
         geo_table.country, 
         pin_table.category, 
@@ -131,7 +118,7 @@ result_df = spark.sql("""
         geo_table.country, 
         pin_table.category 
 """)
-display(result_df)
+display(most_pop_category_per_country)
 
 
 # COMMAND ----------
@@ -194,7 +181,7 @@ display(user_with_most_followers)
 
 # COMMAND ----------
 
-df_user.write.format("parquet").mode("overwrite").saveAsTable("user_table")
+clean_user_data.write.format("parquet").mode("overwrite").saveAsTable("user_table")
 
 most_popular_category = spark.sql("""
     WITH age_group_table AS (
@@ -326,4 +313,4 @@ display(med_follower_join_age)
 
 # COMMAND ----------
 
-
+dbutils.fs.unmount("/mnt/pinterest_data")
