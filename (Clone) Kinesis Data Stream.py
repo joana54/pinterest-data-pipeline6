@@ -18,6 +18,7 @@ ENCODED_SECRET_KEY = urllib.parse.quote(string=SECRET_KEY, safe="")
 
 # COMMAND ----------
 
+#creates schema for pin data
 pin_data_schema = StructType([
     StructField("index", IntegerType()),
     StructField("unique_id", StringType()),
@@ -33,7 +34,7 @@ pin_data_schema = StructType([
     StructField("category", StringType())
 ])
 
-
+#read pin data from Kinesis streams
 df_pin = spark \
 .readStream \
 .format('kinesis') \
@@ -44,12 +45,17 @@ df_pin = spark \
 .option('awsSecretKey', SECRET_KEY) \
 .load()
 
+#deserializes the json data and loads it into a DataFrame using the schema created above
 df_pin = df_pin.selectExpr("CAST(data as STRING)")
 df_pin = df_pin.withColumn("data", from_json(col("data"), pin_data_schema))
 df_pin = df_pin.selectExpr("data.*")
 
+display(df_pin)
+
+
 # COMMAND ----------
 
+#create schema for geo data
 geo_data_schema = StructType([
     StructField("ind", IntegerType()),
     StructField("country", StringType()),
@@ -58,6 +64,7 @@ geo_data_schema = StructType([
     StructField("timestamp", TimestampType())
 ])
 
+#read geo data from Kinesis streams
 df_geo = spark \
 .readStream \
 .format('kinesis') \
@@ -68,12 +75,16 @@ df_geo = spark \
 .option('awsSecretKey', SECRET_KEY) \
 .load()   
 
+#deserializes the json data and loads it into a DataFrame using the schema created above
 df_geo = df_geo.selectExpr("CAST(data as STRING)")
 df_geo = df_geo.withColumn("data", from_json(col("data"), geo_data_schema))
 df_geo = df_geo.selectExpr("data.*")
 
+display(df_geo)
+
 # COMMAND ----------
 
+#create schema for user data
 user_data_schema = StructType([
     StructField("ind", IntegerType()),
     StructField("first_name", StringType()),
@@ -82,6 +93,7 @@ user_data_schema = StructType([
     StructField("date_joined", TimestampType())
 ])
 
+#read user data from Kinesis streams
 df_user = spark \
 .readStream \
 .format('kinesis') \
@@ -92,13 +104,18 @@ df_user = spark \
 .option('awsSecretKey', SECRET_KEY) \
 .load()
 
+#deserializes the json data and loads it into a DataFrame using the schema created above
 df_user = df_user.selectExpr("CAST(data as STRING)")
 df_user = df_user.withColumn("data", from_json(col("data"), user_data_schema))
 df_user = df_user.selectExpr("data.*")
 
+display(df_user)
+
 # COMMAND ----------
 
+
 def pin_data_cleaner(df_pin):
+    """Takes in df_pin, cleans it through various methods and returns the cleaned DataFrame"""
     df_pin = df_pin.replace({'User Info Error': None})
     df_pin = df_pin.replace({'Image src error.':None})
     df_pin = df_pin.replace({'Untitled':None})
@@ -115,10 +132,12 @@ def pin_data_cleaner(df_pin):
     return df_pin
 
 clean_pin_data = pin_data_cleaner(df_pin)
+display(clean_pin_data)
 
 # COMMAND ----------
 
 def geo_data_cleaner(df_geo):
+    """Takes in df_geo, cleans it through various methods and returns the cleaned DataFrame"""
     df_geo = df_geo.withColumn("coordinates", array("latitude", "longitude"))
     df_geo = df_geo.drop("latitude", "longitude")
     df_geo = df_geo.select("ind", "country", "coordinates", "timestamp")
@@ -127,10 +146,12 @@ def geo_data_cleaner(df_geo):
     return df_geo
     
 clean_geo_data = geo_data_cleaner(df_geo)
+display(clean_geo_data)
 
 # COMMAND ----------
 
 def user_data_cleaner(df_user):
+    """Takes in df_user, cleans it through various methods and returns the cleaned DataFrame"""
     df_user = df_user.withColumn("user_name", concat("first_name",lit(" "), "last_name"))
     df_user = df_user.dropDuplicates(['ind'])
     df_user = df_user.drop("first_name", "last_name")
@@ -139,33 +160,33 @@ def user_data_cleaner(df_user):
     return df_user
 
 clean_user_data = user_data_cleaner(df_user)
+display(clean_user_data)
 
 # COMMAND ----------
 
-   clean_pin_data.writeStream \
-  .format("delta") \
-  .outputMode("append") \
-  .option("checkpointLocation", "/tmp/kinesis/_checkpoints/") \
-  .table("0eeeb621168f_pin_table")
+#deletes the checkpoint folders if they have been made through a previous run of this notebook
+dbutils.fs.rm("/tmp/kinesis/0eeeb621168f_pin_table_checkpoints/", True)
+dbutils.fs.rm("/tmp/kinesis/0eeeb621168f_geo_table_checkpoints", True)
+dbutils.fs.rm("/tmp/kinesis/0eeeb621168f_user_table_checkpoints", True)
 
 
-   clean_geo_data.writeStream \
-  .format("delta") \
-  .outputMode("append") \
-  .option("checkpointLocation", "/tmp/kinesis/_checkpoints/") \
-  .table("0eeeb621168f_geo_table") 
+#writes the transformed data to Datbricks to three different tables 
+clean_pin_data.writeStream \
+    .format("delta") \
+    .outputMode("append") \
+    .option("checkpointLocation", "/tmp/kinesis/0eeeb621168f_pin_table_checkpoints/") \
+    .table("0eeeb621168f_pin_table") 
 
 
-   clean_user_data.writeStream \
-  .format("delta") \
-  .outputMode("append") \
-  .option("checkpointLocation", "/tmp/kinesis/_checkpoints/") \
-  .table("0eeeb621168f_user_table")
+clean_geo_data.writeStream \
+    .format("delta") \
+    .outputMode("append") \
+    .option("checkpointLocation", "/tmp/kinesis/0eeeb621168f_geo_table_checkpoints/") \
+    .table("0eeeb621168f_geo_table") 
 
-# COMMAND ----------
 
-# If the code in the cell above needs to be run again, run this first to remove checkpoint folders:
-# dbutils.fs.rm("/tmp/kinesis/0eeeb621168f_pin_table_checkpoints/", True)
-# dbutils.fs.rm("/tmp/kinesis/0eeeb621168f_geo_table_checkpoints/", True)
-# dbutils.fs.rm("/tmp/kinesis/0eeeb621168f_user_table_checkpoints/", True)
-     
+clean_user_data.writeStream \
+    .format("delta") \
+    .outputMode("append") \
+    .option("checkpointLocation", "/tmp/kinesis/0eeeb621168f_user_table_checkpoints") \
+    .table("0eeeb621168f_user_table")
