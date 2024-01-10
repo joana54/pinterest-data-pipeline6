@@ -19,7 +19,7 @@ aws_keys_df = spark.read.format(file_type)\
 # Get the AWS access key and secret key from the spark dataframe
 ACCESS_KEY = aws_keys_df.select('Access key ID').collect()[0]['Access key ID']
 SECRET_KEY = aws_keys_df.select('Secret access key').collect()[0]['Secret access key']
-# Encode the secrete key
+# Encode the secret key
 ENCODED_SECRET_KEY = urllib.parse.quote(string=SECRET_KEY, safe="")
 
 # AWS S3 bucket name
@@ -56,6 +56,7 @@ df_user = load_df("0eeeb621168f.user")
 
 # COMMAND ----------
 
+#Milestone 7; Task 1
 def pin_data_cleaner(df_pin):
     df_pin = df_pin.replace({'User Info Error': None})
     df_pin = df_pin.replace({'Image src error.':None})
@@ -77,6 +78,7 @@ clean_pin_data = pin_data_cleaner(df_pin)
 
 # COMMAND ----------
 
+#Milestone 7; Task 2
 def geo_data_cleaner(df_geo):
     df_geo = df_geo.withColumn("coordinates", array("latitude", "longitude"))
     df_geo = df_geo.drop("latitude", "longitude")
@@ -89,6 +91,7 @@ clean_geo_data = geo_data_cleaner(df_geo)
 
 # COMMAND ----------
 
+#Milestone 7; Task 3
 def user_data_cleaner(df_user):
     df_user = df_user.withColumn("user_name", concat("first_name",lit(" "), "last_name"))
     df_user = df_user.dropDuplicates(['ind'])
@@ -101,7 +104,7 @@ clean_user_data = user_data_cleaner(df_user)
 
 # COMMAND ----------
 
-
+#Milestone 7; Task 4
 clean_pin_data.write.format("parquet").mode("overwrite").saveAsTable("pin_table")
 clean_geo_data.write.format("parquet").mode("overwrite").saveAsTable("geo_table")
 
@@ -123,6 +126,7 @@ display(most_pop_category_per_country)
 
 # COMMAND ----------
 
+#Milestone 7; Task 5
 post_count_per_year = spark.sql("""
     SELECT DISTINCT
         YEAR(geo_table.timestamp) AS post_year, 
@@ -143,6 +147,7 @@ display(post_count_per_year)
 
 # COMMAND ----------
 
+#Milestone 7; Task 6
 most_followers_per_country = spark.sql("""
                       
     WITH RankedResults AS (
@@ -181,6 +186,7 @@ display(user_with_most_followers)
 
 # COMMAND ----------
 
+#Milestone 7; Task 7
 clean_user_data.write.format("parquet").mode("overwrite").saveAsTable("user_table")
 
 most_popular_category = spark.sql("""
@@ -218,6 +224,7 @@ display(most_popular_category)
 
 # COMMAND ----------
 
+#Milestone 7; Task 8
 median_follower_count = spark.sql("""
  WITH age_group_table AS (
      SELECT
@@ -248,6 +255,7 @@ display(median_follower_count)
 
 # COMMAND ----------
 
+#Milestone 7; Task 9
 users_joined = spark.sql("""
     SELECT 
         YEAR(user_table.date_joined) AS post_year,
@@ -263,6 +271,7 @@ display(users_joined)
 
 # COMMAND ----------
 
+#Milestone 7; Task 10
 med_users_2015_2020 = spark.sql("""
    SELECT 
         YEAR (user_table.date_joined) AS post_year,
@@ -280,6 +289,7 @@ display(med_users_2015_2020)
 
 # COMMAND ----------
 
+#Milestone 7; Task 11
 med_follower_join_age = spark.sql("""
     WITH age_group_table AS(
         SELECT
